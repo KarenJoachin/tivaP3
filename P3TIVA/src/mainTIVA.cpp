@@ -10,6 +10,7 @@
 //libreria para SD
 #include <SPI.h>
 #include <SD.h>
+#include <Separador.h>
 File myFile;
 
 // libreria para pantalla
@@ -31,12 +32,6 @@ File myFile;
 #include "font.h"
 #include "lcd_registers.h"
 
-#define LCD_RST PD_0
-#define LCD_CS PD_1
-#define LCD_RS PD_2
-#define LCD_WR PD_3
-#define LCD_RD PE_1
-int DPINS[] = {PB_0, PB_1, PB_2, PB_3, PB_4, PB_5, PB_6, PB_7};
 //*****************************************************************************
 
 
@@ -44,6 +39,14 @@ int DPINS[] = {PB_0, PB_1, PB_2, PB_3, PB_4, PB_5, PB_6, PB_7};
 //Definiciond de etiquetas
 //-----------------------------------------------------------------------------
 //
+// pines de la TFT
+#define LCD_RST PD_0
+#define LCD_CS PD_1
+#define LCD_RS PD_2
+#define LCD_WR PD_3
+#define LCD_RD PE_1
+int DPINS[] = {PB_0, PB_1, PB_2, PB_3, PB_4, PB_5, PB_6, PB_7};
+
 const int BTN = PF_0;    //sw2 pedir dato
 const int BTN2 = PF_4;  // sw1 para subir datos a la memoria
 
@@ -79,17 +82,17 @@ int cuenta = 0;
 int cuenta2 = 0;
 
 
-String FR = "";
-String oxi = "";
+String FR = ""; // para la frecuencia cardica
+String oxi = ""; // para nivel de oxigeno recibido de esp32
 String extraido = "";
 
-//-----------------------------------------------------------------------------
-//ISR
-//-----------------------------------------------------------------------------
+bool guardardato;//DANI subirdato
+
+Separador s;
+
 //-----------------------------------------------------------------------------
 //Configuracion
 //-----------------------------------------------------------------------------
-
 void setup()
 {
   Serial.begin(115200);  //  serial para monitor
@@ -119,8 +122,8 @@ void setup()
   Serial.println("Inicio");
   LCD_Init(); // inicializa la LCD
   LCD_Clear(0x00);// se borra . 0 es el color negro
-  //FillRect(0, 0, 319, 206, 0x421b);;// cordenada x, C y,ancho, lanolor del cuadrado
-  LCD_Bitmap(0, 0, 320, 240, fondo);//se llama a la imagen que se tiene en la libreria d efondo de 8 bits
+
+  LCD_Bitmap(0, 0, 320, 240, fondo);//se llama a la imagen que se tiene en la libreria de fondo de 8 bits
   //*********************************************************************************
 }
 //-----------------------------------------------------------------------------
@@ -129,16 +132,16 @@ void setup()
 
 void loop()
 {
+  LCD_Print(FR, 55, 70, 2, 0xffffff, 0xFAAA);//para imprimir en la pantalla
+  LCD_Print(oxi, 230, 180, 2, 0xffffff, 0x0255); //para imprimir en la pantalla
   //********** control de boton1 para extraer datos   -----
   if (digitalRead(BTN) == LOW)
   {
     static unsigned long last_time_intrr1 = 0; //[ultimo tiempo]
     unsigned long time_intrr1 = millis();      //tiempo en tiempo real
-
     if (time_intrr1 - last_time_intrr1 > 200)
     {
       cuenta++;
-
       if (cuenta >= 2)
       {
         cuenta = 0;
@@ -152,11 +155,9 @@ void loop()
   {
     static unsigned long last_time_intrr2 = 0; //[ultimo tiempo]
     unsigned long time_intrr2 = millis();      //tiempo en tiempo real
-
     if (time_intrr2 - last_time_intrr2 > 200)
     {
       cuenta2++;
-
       if (cuenta2 >= 2)
       {
         cuenta2 = 0;
@@ -168,25 +169,21 @@ void loop()
   if (cuenta == 1) {
     if (Serial2.available() > 0) {
       extraido = Serial2.readStringUntil('\n');
+      //ahora se separan los datos
+      oxi = s.separa(extraido, ',', 0);
+      FR = s.separa(extraido, ',', 1);;
     }
-    Serial.println("Recibi:");
+    Serial.println("Recibi: ");
     Serial.println(FR);
     Serial.println(oxi);
-    Serial.println(extraido);
-
-    LCD_Print(FR, 150, 100, 2, 0xffffff, 0x004aad);//para imprimir en la pantalla
-    LCD_Print(oxi, 50, 100, 2, 0xffffff,0xff5757);//para imprimir en la pantalla
-    delay(500);
-    Serial2.write (1);
+    Serial2.write (1);// envio 1 para que salga en monitor tambien
     cuenta = 0;
   }
   //subir datos a SD
   if (cuenta2 == 1) {
+    Serial2.write(2);
     writeSD();
-    Serial2.write("G");
     cuenta2 = 0;
-    
-
   }
 }
 
@@ -194,15 +191,13 @@ void loop()
 // FUNCION para  escribir en SD
 //***************************************************************************************************************************************
 void writeSD(void) {
-
   myFile = SD.open("SIGNOS.txt", FILE_WRITE);//aabre el archivo  CSV de peso
-
-
   // if the file opened okay, write to it:
   if (myFile) {
     Serial.print("Subiendo Datos a SD");
     myFile.print("Oxigeno: ");
-    myFile.println(oxi);
+    myFile.print(oxi);
+    myFile.print("   ");
     myFile.print("Frecuencia cardiaca: ");
     myFile.println(FR);
     // close the file:
@@ -212,7 +207,6 @@ void writeSD(void) {
     // if the file didn't open, print an error:
     Serial.println("error opening SIGNOS.csv");
   }
-
 }
 
 //***************************************************************************************************************************************
